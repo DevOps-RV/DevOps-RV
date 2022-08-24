@@ -3,7 +3,7 @@
 
 ## About Me :wave:
 
-- Hey 👋 there! :smile: My name is Raghu. <br />
+- Hey there! :smile: My name is Raghu. <br />
 - I'm a 30-year-old DevOps Automation Engineer. <br />
 - Currently reside in Alpharetta, GA, USA. <br />
 
