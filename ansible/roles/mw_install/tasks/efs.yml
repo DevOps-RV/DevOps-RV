@@ -43,7 +43,7 @@
     state: "present"
     region: "{{ aws_region }}"
     disable_rollback: true
-    template: "{{ role_path }}/../../CloudFormation/efs_accesspoint.yml"
+    template: "{{ role_path }}/../../aws/CloudFormation/efs_accesspoint.yml"
     template_parameters:
       FileSystemID: "{{ oracle_aserver_efs_fs_id }}"
       UserId: "{{ oracle_user_id }}"
@@ -67,7 +67,7 @@
     state: "present"
     region: "{{ aws_region }}"
     disable_rollback: true
-    template: "{{ role_path }}/../../CloudFormation/efs_accesspoint.yml"
+    template: "{{ role_path }}/../../aws/CloudFormation/efs_accesspoint.yml"
     template_parameters:
       FileSystemID: "{{ oracle_cluster_efs_fs_id }}"
       UserId: "{{ oracle_user_id }}"
