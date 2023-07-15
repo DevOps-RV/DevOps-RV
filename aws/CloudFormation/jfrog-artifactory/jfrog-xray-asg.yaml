@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "[Jfrog Xray] Deploy ASG for Jfrog xray service"
+Parameters:
+  SubnetIds:
+    Description: Subnets where your cluster nodes and other internal infrastructure will be deployed.
+    Type: CommaDelimitedList
+    ConstraintDescription: Must be a list of two or more Subnet ID's within the selected VPC.
+  SecurityGroupId:
+    Description: Security group Ids
+    Type: List<AWS::EC2::SecurityGroup::Id>
+  ClusterName:
+    Type: String
+    Default: "jfrog-xray"
+  VpcId:
+    Type: String
+    AllowedPattern: "^(?:vpc-([0-9a-f]{8}|[0-9a-f]{17})|)$"
+  MinScalingNodes:
+    Type: Number
+    Default: 1
+  MaxScalingNodes:
+    Type: Number
+    Default: 1
+  AmiId:
+    Type: String
+  DatabaseUrl:
+    Description: >
+      Database url ex: rds-123.net
+    Type: String
+  DatabaseUser:
+    Type: String
+    Default: 'xray'
+  DatabasePassword:
+    Type: String
+    NoEcho: 'true'
+  DatabaseName:
+    Type: String
+    Default: 'xraydb'
+  MasterKey:
+    Type: String
+    NoEcho: 'true'
+  ExtraJavaOptions:
+    Type: String
+    Default: -server -Xms1024m -Xmx4g -Xss256k -XX:+UseG1GC
+    Description: JVM Options
+  XrayVersion:
+    Type: String
+    Default: '3.57.6'
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: artifactory
+  InstanceType:
+    Type: String
+    Default: c5.xlarge
+  VolumeSize:
+    Type: Number
+    Default: 50
+  JoinKey:
+    Description: Artifactory Join key
+    Type: String
+    NoEcho: 'true'
+  IamRole:
+    Description: IAM instnace profile role
+    Type: String
+  ArtiURL:
+    Description: Artifactory DNS name used by the Reverse Proxy
+    Type: String
+    Default: 'https://artifactory.inf.aws.vz-connect.net'
+  CustomUserData:
+    Type: String
+    Default: ''
+  ASGReplace:
+    Type: String
+    Default: true
+    AllowedValues:
+      - 'true'
+      - 'false'
+Resources:
+  XrayNodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [ !Ref IamRole ]
+  XrayScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName: !Ref XrayLaunchConfiguration
+      VPCZoneIdentifier: !Ref SubnetIds
+      MinSize: !Ref MinScalingNodes
+      MaxSize: !Ref MaxScalingNodes
+      Cooldown: '300'
+      DesiredCapacity: !Ref MinScalingNodes
+      HealthCheckType: EC2
+      HealthCheckGracePeriod: 900
+      Tags:
+        - Key: Name
+          Value: !Ref ClusterName
+          PropagateAtLaunch: true
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT30M
+  XrayLaunchConfiguration:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Metadata:
+      'AWS::CloudFormation::Init':
+        configSets:
+          default:
+            - "1-install-xray"
+            - "2-configure-xray"
+        1-install-xray:
+          files:
+            /etc/0_xray_init.sh:
+              content: !Sub |+
+                #!/usr/bin/env bash
+                yum -y update
+                yum install -y git awslogs wget curl
+                yum install -y amazon-linux-extras
+                groupadd -g 1030 xray
+                useradd -u 1030 -s /bin/bash -g 1030 xray
+                mkdir -p /opt/app/jfrog/
+                mkdir -p /opt/app/jfrog/xray
+                id -a xray
+            /etc/1_xray_install.sh:
+              content: !Sub |+
+                #!/usr/bin/env bash
+                wget -O /opt/app/jfrog/jfrog-xray-${XrayVersion}-linux.tar.gz https://releases.jfrog.io/artifactory/jfrog-xray/xray-linux/${XrayVersion}/jfrog-xray-${XrayVersion}-linux.tar.gz
+                tar -zxf /opt/app/jfrog/jfrog-xray-${XrayVersion}-linux.tar.gz -C /opt/app/jfrog/
+                sleep 1
+                # Copy content for unarchive fodler to xray home
+                cp -r /opt/app/jfrog/jfrog-xray-${XrayVersion}-linux/. /opt/app/jfrog/xray/
+                mkdir -p /opt/app/jfrog/xray/var/data
+                mkdir -p /opt/app/jfrog/xray/var/etc
+                mkdir -p /opt/app/jfrog/xray/var/etc/security/
+                mkdir -p /opt/app/jfrog/xray/var/etc/info
+                echo "install dependencies"
+                yum -y install libdb-utils socat
+                yum -y install /opt/app/jfrog/xray/app/third-party/rabbitmq/erlang-23.2.3-1.el7.x86_64.rpm
+          commands:
+            00_xray_init:
+              command: /bin/bash /etc/0_xray_init.sh | tee /home/ec2-user/0_xray_init.log
+              ignoreErrors: 'false'
+            01_xray_install:
+              command: /bin/bash /etc/1_xray_install.sh | tee /home/ec2-user/1_xray_install.log
+              ignoreErrors: 'false'
+        2-configure-xray:
+          files:
+            /opt/app/jfrog/xray/var/etc/system.yaml:
+              content: !Sub |+
+                ## @formatter:off
+                configVersion: 1
+                shared:
+                  jfrogUrl: "${ArtiURL}"
+                  extraJavaOpts: "${ExtraJavaOptions}"
+                  logging:
+                    rotation:
+                      maxSizeMb: 25
+                      maxFiles: 10
+                      compress: true
+                  database:
+                    type: postgresql
+                    driver: org.postgresql.Driver
+                    url: "postgres://${DatabaseUrl}:5432/${DatabaseName}?sslmode=disable"
+                    username: ${DatabaseUser}
+                    password: ${DatabasePassword}
+            /opt/app/jfrog/xray/var/etc/security/master.key:
+              content: !Sub |+
+                ${MasterKey}
+            /opt/app/jfrog/xray/var/etc/security/join.key:
+              content: !Sub |+
+                ${JoinKey}
+            /opt/app/jfrog/xray/var/etc/info/installer-info.json:
+              content: !Sub |+
+                {
+                  "productId": "aws_ec2_xray/${XrayVersion}",
+                  "features": [
+                  {
+                    "featureId": "Channel/DevOps"
+                  }
+                  ]
+                }
+          commands:
+            00_change_perms:
+              command: chown -R xray:xray /opt/app/jfrog
+              ignoreErrors: 'false'
+            01_install_service:
+              command: /bin/bash /opt/app/jfrog/xray/app/bin/installService.sh | tee /home/ec2-user/install_service.log
+              ignoreErrors: 'false'
+            02_start_xray:
+              command: systemctl start xray.service
+            03_enable_artifactory:
+              command: systemctl enable xray.service || true
+              ignoreErrors: 'true'
+    Properties:
+      AssociatePublicIpAddress: false
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref XrayNodeInstanceProfile
+      ImageId: !Ref AmiId
+      SecurityGroups: !Ref SecurityGroupId
+      InstanceType: !Ref InstanceType
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp2
+            DeleteOnTermination: true
+      UserData:
+        'Fn::Base64': !Sub |+
+          #!/bin/bash -xe
+          yum update -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource XrayLaunchConfiguration --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource XrayScalingGroup --region ${AWS::Region}
+
+Outputs:
+  IAMInstanceProfile:
+    Value: !Ref XrayNodeInstanceProfile
+  AutoScalingGroup:
+    Value: !Ref XrayScalingGroup
+  LaunchConfig:
+    Value: !Ref XrayLaunchConfiguration

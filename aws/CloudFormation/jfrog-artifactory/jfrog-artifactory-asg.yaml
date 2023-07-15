@@ -1,0 +1,403 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys the EC2 Autoscaling, LaunchConfig and Instance for Artifactory"
+Parameters:
+  SubnetIds:
+    Description: Subnets where your cluster nodes and other internal infrastructure will be deployed.
+    Type: CommaDelimitedList
+    ConstraintDescription: Must be a list of two or more Subnet ID's within the selected VPC.
+  SecurityGroupId:
+    Description: Security group Ids
+    Type: List<AWS::EC2::SecurityGroup::Id>
+  ClusterName:
+    Type: String
+    Default: "jfrog-artifactory"
+  VpcId:
+    Type: String
+    AllowedPattern: "^(?:vpc-([0-9a-f]{8}|[0-9a-f]{17})|)$"
+  MinScalingNodes:
+    Type: Number
+    Default: 1
+  MaxScalingNodes:
+    Type: Number
+    Default: 3
+  AmiId:
+    Type: String
+  ArtifactoryLicense1:
+    Type: String
+  ArtifactoryLicense2:
+    Type: String
+  ArtifactoryLicense3:
+    Type: String
+  ArtifactoryS3Bucket:
+    Description: S3Bucket to store binaries
+    Type: String
+  DatabaseUrl:
+    Description: >
+      Database url ex: rds-123.net
+    Type: String
+  DatabaseUser:
+    Type: String
+    Default: 'artifactory'
+  DatabasePassword:
+    Type: String
+    NoEcho: 'true'
+  DatabaseName:
+    Type: String
+    Default: 'artdb'
+  MasterKey:
+    Type: String
+    NoEcho: 'true'
+  ExtraJavaOptions:
+    Type: String
+    Default: -server -Xms1024m -Xmx8g -Xss256k -XX:+UseG1GC
+    Description: JVM Options
+  ArtifactoryVersion:
+    Type: String
+    Default: '7.19.4'
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: artifactory
+  TargetGroupARN:
+    Type: CommaDelimitedList
+  InstanceType:
+    Type: String
+    Default: r5.xlarge
+  VolumeSize:
+    Type: Number
+    Default: 50
+  JoinKey:
+    Description: Artifactory Join key
+    Type: String
+    NoEcho: 'true'
+  IamRole:
+    Description: IAM instnace profile role
+    Type: String
+  ArtiURL:
+    Description: Artifactory DNS name used by the Reverse Proxy
+    Type: String
+    Default: 'https://artifactory.devops-rv.net'
+  CustomUserData:
+    Type: String
+    Default: ''
+  ASGReplace:
+    Type: String
+    Default: true
+    AllowedValues:
+      - 'true'
+      - 'false'
+Resources:
+  ArtiNodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [ !Ref IamRole ]
+  ArtifactoryScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName: !Ref ArtifactoryLaunchConfiguration
+      VPCZoneIdentifier: !Ref SubnetIds
+      MinSize: !Ref MinScalingNodes
+      MaxSize: !Ref MaxScalingNodes
+      Cooldown: '300'
+      DesiredCapacity: !Ref MinScalingNodes
+      TargetGroupARNs: !Ref TargetGroupARN
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 900
+      Tags:
+        - Key: Name
+          Value: !Ref ClusterName
+          PropagateAtLaunch: true
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT30M
+  ArtifactoryLaunchConfiguration:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Metadata:
+      'AWS::CloudFormation::Init':
+        configSets:
+          default:
+            - "1-install-artifactory"
+            - "2-configure-artifactory"
+            - "3-nginx-config"
+        1-install-artifactory:
+          files:
+            /etc/0_arti_init.sh:
+              content: !Sub |+
+                #!/usr/bin/env bash
+                yum -y update
+                yum install -y git awslogs wget curl
+                yum install -y java-1.8.0-openjdk-devel
+                yum install -y amazon-linux-extras
+                amazon-linux-extras install nginx1.12=latest -y
+                groupadd -g 1030 artifactory
+                useradd -u 1030 -s /bin/bash -g 1030 artifactory
+                mkdir -p /opt/app/jfrog
+                mkdir -p /opt/app/jfrog/artifactory
+                ls -l /opt/app/jfrog
+                id -a artifactory
+            /etc/1_arti_install.sh:
+              content: !Sub |+
+                #!/usr/bin/env bash
+                wget -O /opt/app/jfrog/artifactory/arti-${ArtifactoryVersion}.tar.gz https://releases.jfrog.io/artifactory/artifactory-pro/org/artifactory/pro/jfrog-artifactory-pro/${ArtifactoryVersion}/jfrog-artifactory-pro-${ArtifactoryVersion}-linux.tar.gz
+                tar -zxf /opt/app/jfrog/artifactory/arti-${ArtifactoryVersion}.tar.gz -C /opt/app/jfrog
+                sleep 1
+                # Copy content for unarchive fodler to artifactory home
+                cp -r /opt/app/jfrog/artifactory-pro-${ArtifactoryVersion}/. /opt/app/jfrog/artifactory/
+                mkdir -p /opt/app/jfrog/artifactory/var/data
+                mkdir -p /opt/app/jfrog/artifactory/var/etc
+                mkdir -p /opt/app/jfrog/artifactory/var/etc/security/
+                mkdir -p /opt/app/jfrog/artifactory/var/etc/artifactory/info/
+                echo "Downloading mysql java connector 8.0.24"
+                rm -rf /opt/app/jfrog/artifactory/var/bootstrap/artifactory/tomcat/lib/mysql-connector-java-8.0.24.jar || true
+                curl -L -o /opt/mysql-connector-java-8.0.24.tar.gz https://downloads.mysql.com/archives/get/p/3/file/mysql-connector-java-8.0.24.tar.gz
+                tar -zxf /opt/mysql-connector-java-8.0.24.tar.gz -C /opt
+                cp -f /opt/mysql-connector-java-8.0.24/mysql-connector-java-8.0.24.jar /opt/app/jfrog/artifactory/var/bootstrap/artifactory/tomcat/lib/mysql-connector-java-8.0.24.jar
+                ls -l /opt/app/jfrog/artifactory/var/bootstrap/artifactory/tomcat/lib/
+                #curl -L -o /opt/app/jfrog/artifactory/var/bootstrap/artifactory/tomcat/lib/mysql-connector-java-5.1.47.jar https://bintray.com/artifact/download/bintray/jcenter/mysql/mysql-connector-java/5.1.47/mysql-connector-java-5.1.47.jar
+          commands:
+            00_arti_init:
+              command: /bin/bash /etc/0_arti_init.sh | tee /home/ec2-user/0_arti_init.log
+              ignoreErrors: 'false'
+            01_artifactory_install:
+              command: /bin/bash /etc/1_arti_install.sh | tee /home/ec2-user/1_arti_install.log
+              ignoreErrors: 'false'
+        2-configure-artifactory:
+          files:
+            /etc/0_config_init.sh:
+              content: !Sub |+
+                #!/usr/bin/env bash
+                [ -d /opt/app/jfrog/artifactory/var/etc ] || mkdir -p /opt/app/jfrog/artifactory/var/etc
+                mkdir -p /opt/app/jfrog/artifactory/var/etc/security/
+                mkdir -p /opt/app/jfrog/artifactory/var/etc/artifactory/info
+            /opt/app/jfrog/artifactory/var/etc/system.yaml:
+              content: !Sub |+
+                ## @formatter:off
+                ## JFROG ARTIFACTORY SYSTEM CONFIGURATION FILE
+                ## JVM xmx set to 8GB
+                configVersion: 1
+                shared:
+                  extraJavaOpts: "${ExtraJavaOptions}"
+                  security:
+                    ## Maximum time to wait for key files (master.key and join.key)
+                    bootstrapKeysReadTimeoutSecs: 120
+                  logging:
+                    rotation:
+                      maxSizeMb: 25
+                      maxFiles: 10
+                      compress: true
+                  node:
+                    ## A unique id to identify this node.
+                    ## Default auto generated at startup.
+                    # id: "arti1"
+                    ## Sets this node as part of HA installation
+                    haEnabled: true
+                    taskAffinity: any
+                  database:
+                    type: mysql
+                    driver: com.mysql.jdbc.Driver
+                    url: "jdbc:mysql://${DatabaseUrl}:3306/${DatabaseName}?characterEncoding=UTF-8&elideSetAutoCommits=true&useSSL=false"
+                    username: ${DatabaseUser}
+                    password: ${DatabasePassword}
+                router:
+                  entrypoints:
+                    internalPort: 8046
+            /opt/app/jfrog/artifactory/var/etc/artifactory/binarystore.xml:
+              content: !Sub |+
+                <config version="2">
+                  <chain>
+                    <provider id="cache-fs" type="cache-fs">
+                      <provider id="s3-storage-v3" type="s3-storage-v3"/>
+                    </provider>
+                  </chain>
+                  <provider id="s3-storage-v3" type="s3-storage-v3">
+                    <endpoint>s3.${AWS::Region}.amazonaws.com</endpoint>
+                    <bucketName>${ArtifactoryS3Bucket}</bucketName>
+                    <path>artifactory/filestore</path>
+                    <region>${AWS::Region}</region>
+                    <useInstanceCredentials>true</useInstanceCredentials>
+                  </provider>
+                </config>
+            /opt/app/jfrog/artifactory/var/etc/security/master.key:
+              content: !Sub |+
+                ${MasterKey}
+            /opt/app/jfrog/artifactory/var/etc/security/join.key:
+              content: !Sub |+
+                ${JoinKey}
+            /opt/app/jfrog/artifactory/var/etc/artifactory/info/installer-info.json:
+              content: !Sub |+
+                {
+                  "productId": "CICD-Arti-${ArtifactoryVersion}",
+                  "features": [
+                    {
+                      "featureId": "Channel/DevOps"
+                    }
+                  ]
+                }
+            /opt/app/jfrog/artifactory/var/etc/artifactory/artifactory.cluster.license:
+              content: !Sub |+
+                ${ArtifactoryLicense1}
+                ${ArtifactoryLicense2}
+                ${ArtifactoryLicense3}
+          commands:
+            00_change_perms:
+              command: chown -R artifactory:artifactory /opt/app/jfrog
+              ignoreErrors: 'false'
+            01_install_service:
+              command: /bin/bash /opt/app/jfrog/artifactory/app/bin/installService.sh | tee /home/ec2-user/install_service.log
+              ignoreErrors: 'false'
+            02_start_artifactory:
+              command: systemctl start artifactory.service
+            03_enable_artifactory:
+              command: systemctl enable artifactory.service || true
+              ignoreErrors: 'true'
+        3-nginx-config:
+          files:
+            /etc/nginx/nginx.conf:
+              content: !Sub |+
+                # Maintainer: DevOps Team
+                worker_processes  auto;
+                error_log  /var/log/nginx/error.log  info;
+                pid        /run/nginx.pid;
+                events {
+                    worker_connections  1024;
+                }
+                http {
+                    include       mime.types;
+                    variables_hash_max_size 1024;
+                    variables_hash_bucket_size 64;
+                    server_names_hash_max_size 4096;
+                    server_names_hash_bucket_size 128;
+                    types_hash_max_size 2048;
+                    types_hash_bucket_size 64;
+                    proxy_read_timeout 2400s;
+                    client_header_timeout 2400s;
+                    client_body_timeout 2400s;
+                    proxy_connect_timeout 75s;
+                    proxy_send_timeout 2400s;
+                    proxy_buffer_size 32k;
+                    proxy_buffers 40 32k;
+                    proxy_busy_buffers_size 64k;
+                    proxy_temp_file_write_size 250m;
+                    proxy_http_version 1.1;
+                    client_body_buffer_size 128k;
+                    include    /etc/nginx/conf.d/*.conf;
+                    default_type  application/octet-stream;
+                    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                                      '$status $body_bytes_sent "$http_referer" '
+                                      '"$http_user_agent" "$http_x_forwarded_for"';
+                    access_log  /var/log/nginx/access.log  main;
+                    sendfile        on;
+                    tcp_nopush     on;
+                    keepalive_timeout  65;
+                }
+              mode: '000644'
+              owner: root
+              group: root
+            /etc/nginx/conf.d/artifactory.conf:
+              content: !Sub |
+                ## add HA entries when ha is configure
+                upstream artifactory {
+                  server 127.0.0.1:8082;
+                }
+                upstream artifactory-direct {
+                  server 127.0.0.1:8081;
+                }
+                ## server configuration
+                server {
+                  listen 80 ;
+                  server_name _;
+                  if ($http_x_forwarded_proto = '') {
+                    set $http_x_forwarded_proto  $scheme;
+                  }
+                  ## Application specific logs
+                  access_log /var/log/nginx/artifactory-access.log;
+                  error_log /var/log/nginx/artifactory-error.log;
+                  rewrite ^/$ /ui/ redirect;
+                  rewrite ^/ui$ /ui/ redirect;
+                  rewrite ^/(v1|v2)/(.*) /artifactory/api/docker/vzt-oem-docker-hub/$1/$2;
+                  chunked_transfer_encoding on;
+                  client_max_body_size 0;
+                  location / {
+                    proxy_read_timeout  2400s;
+                    proxy_pass_header   Server;
+                    proxy_cookie_path   ~*^/.* /;
+                    proxy_pass          "http://artifactory";
+                    proxy_next_upstream error timeout non_idempotent;
+                    proxy_next_upstream_tries    1;
+                    #proxy_set_header     X-JFrog-Override-Base-Url $http_x_forwarded_proto://$host;
+                    proxy_set_header    X-JFrog-Override-Base-Url ${ArtiURL};
+                    proxy_set_header    X-Forwarded-Port  $server_port;
+                    proxy_set_header    X-Forwarded-Proto $http_x_forwarded_proto;
+                    proxy_set_header    Host              $http_host;
+                    proxy_set_header    X-Forwarded-For   $proxy_add_x_forwarded_for;
+
+                  location ~ ^/artifactory/ {
+                    proxy_pass    http://artifactory-direct;
+                    }
+                  }
+                }
+              mode: '000644'
+              owner: root
+              group: root
+            /etc/configure_reverse_proxy.sh:
+              content: !Sub |
+                #!/bin/bash
+                curl --location --request POST 'http://localhost:8081/artifactory/api/system/configuration/webServer' \
+                --header 'Authorization: Basic ZGV2b3BzOkRldm9wcyEyMw==' \
+                --header 'Content-Type: application/json' \
+                --data-raw '{
+                    "webServerType": "NGINX",
+                    "dockerReverseProxyMethod": "PORTPERREPO",
+                    "useHttps": false,
+                    "useHttp": true,
+                    "httpsPort": 443,
+                    "httpPort": 80,
+                    "upStreamName": "artifactory",
+                    "reverseProxyRepositories": {
+                        "reverseProxyRepoConfigs": [
+                            {
+                                "repoRef": "devops-rv-docker-hub",
+                                "serverName": "artifactory.devops-rv.net",
+                                "port": 80
+                            }
+                        ]
+                    }
+                }'
+          commands:
+            00_start_nginx:
+              command: systemctl start nginx
+              ignoreErrors: 'false'
+            01_enable_nginx:
+              command: systemctl enable nginx || true
+              ignoreErrors: 'true'
+            02_confiugre_proxy:
+              command: /bin/bash /etc/configure_reverse_proxy.sh || true
+              ignoreErrors: 'true'
+    Properties:
+      AssociatePublicIpAddress: false
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref ArtiNodeInstanceProfile
+      ImageId: !Ref AmiId
+      SecurityGroups: !Ref SecurityGroupId
+      InstanceType: !Ref InstanceType
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp2
+            DeleteOnTermination: true
+      UserData:
+        'Fn::Base64': !Sub |+
+          #!/bin/bash -xe
+          yum update -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ArtifactoryLaunchConfiguration --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ArtifactoryScalingGroup --region ${AWS::Region}
+
+Outputs:
+  IAMInstanceProfile:
+    Value: !Ref ArtiNodeInstanceProfile
+  AutoScalingGroup:
+    Value: !Ref ArtifactoryScalingGroup
+  LaunchConfig:
+    Value: !Ref ArtifactoryLaunchConfiguration

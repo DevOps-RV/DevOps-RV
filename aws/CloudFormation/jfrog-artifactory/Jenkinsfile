@@ -1,0 +1,94 @@
+pipeline {
+
+  agent {
+      label 'aws-slave'
+    }
+
+  parameters {
+    string(name: 'STACK_NAME', description: 'Enter the CloudFormation Stack Name.')
+    string(name: 'PARAMETERS_FILE_NAME', description: 'Enter the Parameters File Name (Must contain file extension type *.properties with key=values format)')
+    string(name: 'TEMPLATE_NAME', description: 'Enter the CloudFormation Template Name (Must contain file extension type *.yaml)')
+    choice(name: 'REGION', choices: ['---choose---','us-east-2'], defaultValue: 'us-east-2', description: 'AWS Account Region')
+    choice(name: 'PROFILE', choices: ['---choose---','aws-prd'], defaultValue: 'aws-prd', description: 'AWS Account Profile')
+    choice(name: 'ACTION', choices: ['---choose---','create-changeset','deploy-stack','delete-stack'], description: 'CloudFormation Actions')
+  }
+
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '100'))
+  }
+
+  stages {
+    stage('check version') {
+      steps {
+        ansiColor('xterm') {
+          script {
+            currentBuild.displayName = "${STACK_NAME}-${ACTION}"
+            sh 'aws --version'
+            sh 'aws sts get-caller-identity --profile ${PROFILE}'
+  }}}}
+
+    stage('create-changeset') {
+      when {
+        expression { params.ACTION == 'create-changeset' }
+      }
+      steps {
+        ansiColor('xterm') {
+          script {
+                sh 'aws cloudformation deploy \
+                      --stack-name ${STACK_NAME} \
+                      --template-file CloudFormation/${TEMPLATE_NAME} \
+                      --parameter-overrides file://parameters/${PARAMETERS_FILE_NAME} \
+                      --capabilities CAPABILITY_NAMED_IAM \
+                      --region ${REGION} \
+                      --profile ${PROFILE} \
+                      --no-execute-changeset'
+    }}}}
+
+    stage('stack-execution') {
+      when {
+        expression { params.ACTION == 'deploy-stack' }
+      }
+      steps {
+        ansiColor('xterm') {
+          script {
+                sh 'aws cloudformation deploy \
+                      --stack-name ${STACK_NAME} \
+                      --template-file CloudFormation/${TEMPLATE_NAME} \
+                      --parameter-overrides file://parameters/${PARAMETERS_FILE_NAME} \
+                      --capabilities CAPABILITY_NAMED_IAM \
+                      --region ${REGION} \
+                      --profile ${PROFILE}'
+
+                sh 'aws cloudformation describe-stack-events --stack-name ${STACK_NAME}  --region ${REGION} --profile ${PROFILE}'
+    }}}}
+
+    stage('delete-confirm') {
+      agent none
+      when {
+        expression { params.ACTION == 'delete-stack' }
+      }
+      steps {
+        input(message: 'Deleting Stack ${STACK_NAME} !', ok: 'Confirm')
+      }
+    }
+
+    stage('delete-stack') {
+      when {
+        expression { params.ACTION == 'delete-stack' }
+      }
+      steps {
+        ansiColor('xterm') {
+          script {
+
+                sh 'aws cloudformation delete-stack \
+                      --stack-name ${STACK_NAME} \
+                      --region ${REGION} \
+                      --profile ${PROFILE}'
+                
+                sh 'aws cloudformation wait stack-delete-complete \
+                      --stack-name ${STACK_NAME} \
+                      --region ${REGION} \
+                      --profile ${PROFILE}'
+    }}}}
+  }
+}

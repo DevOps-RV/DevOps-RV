@@ -5,7 +5,7 @@ artifactory_host:
 artifactory_base_url: "https://{{ artifactory_host }}/artifactory"
 artifactory_user: 
 artifactory_username: "{{ artifactory_user }}"
-bitbucket_host: 
+git_host: 
 oracle_install_group_name: "oinstall"
 oracle_install_group_id: 1002
 oracle_user_id: 1002

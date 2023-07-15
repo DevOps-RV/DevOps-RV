@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  [Service Catalog] Creates an RDS MySQL, Aurora-MySQL, Aurora Database Instances
+
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - 
+      Label:
+        default: 'RDS Required Parameters'
+      Parameters:
+        - DBInstanceIdentifier
+        - DBName
+        - DBInstanceClass
+        - SubnetIds
+        - VPCSecurityGroups
+        - MasterUsername
+        - MasterUserPassword
+        - KmsKeyId
+
+Parameters:
+
+  DBAllocatedStorage:
+    Description: 'The allocated storage size, specified in GB'
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+
+  BackupRetentionPeriod:
+    Type: Number
+    Description: Specify the number of days during which automatic DB snapshots are retained.
+    MinValue: 1
+    MaxValue: 35
+    Default: 14
+
+  DBInstanceIdentifier:
+    Description: 'A name for the DB instance.'
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9\\-]*"
+    ConstraintDescription: 'Must begin with a letter. Subsequent characters can be letters, hyphens, or digits (0-9). Cant end with a hyphen or contain two consecutive hyphens'
+
+  DBInstanceClass:
+    Description: 'The instance type of database server.'
+    Type: String
+    Default: 'db.r5.large'
+
+  DBName:
+    Description: Database Name
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9\\_\\-]*"
+    ConstraintDescription: 'Cant be a word reserved by the specified database engine'
+
+  Engine:
+    Description: 'MySQL DB Engine'
+    Type: String
+    Default: 'mysql'
+
+  EngineVersion:
+    Description: 'MySQL DB Engine version.'
+    Type: String
+    Default: '5.7.16'
+    AllowedValues: ['8.0.28', '8.0.27', '8.0.26', '8.0.25', '8.0.23', '8.0.21', '8.0.20', '8.0.19', '8.0.17', '8.0.16', '8.0.15', '8.0.13', '8.0.11', '5.7.37', '5.7.34', '5.7.33', '5.7.31', '5.7.30', '5.7.28', '5.7.26', '5.7.25', '5.7.24', '5.7.23', '5.7.22', '5.7.21', '5.7.19', '5.7.17', '5.7.16']
+
+  KmsKeyId:
+    Description: 'The ARN of the AWS KMS key thats used to encrypt the DB instance'
+    Type: String
+
+  DBParameterGroupName:
+    Description: 'custom parameter group for an RDS database family.'
+    Type: String
+    Default: 'default.mysql5.7'
+    AllowedValues: ['default.mysql5.6', 'default.mysql5.7', 'default.mysql8.0']
+
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Specifies the Comma separated list of existing VPC Subnet Ids where PostgreSQL instances will run
+    ConstraintDescription: 'Must be list of EC2 subnet ids'
+
+  MasterUsername:
+    Description: Admin Username
+    NoEcho: true
+    Type: String
+    MinLength: 5
+    MaxLength: 16
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    ConstraintDescription: 'Must begin with a letter and contain only alphanumeric characters or numbers.'
+
+  MasterUserPassword:
+    Description: Admin Password
+    NoEcho: true
+    Type: String
+    MinLength: 8
+    MaxLength: 41
+    ConstraintDescription: 'Application Password must be 8-41 characters.'
+
+  Port:
+    Description: The port number on which the database accepts connections.
+    Type: Number
+    Default: 3306
+    ConstraintDescription: 'Must be in the range [1115-65535]'
+    MinValue: 1115
+    MaxValue: 65535
+    
+  PreferredBackupWindow:
+    Type: String
+    Description: Window time for instance backup.
+    Default: 00:30-01:30
+
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: Window time for instance maintenance.
+    Default: Sun:02:00-Sun:03:00
+
+  StorageType:
+    Description: Specifies the storage type to be associated with the DB instance.
+    Type: String
+    AllowedValues: ['standard', 'gp2', 'io1']
+    Default: gp2
+
+  VPCSecurityGroups:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Specifies the Comma separated list of existing VPC Security Groups
+    ConstraintDescription: 'Must be list of EC2 security group ids'
+
+Resources:
+  DBSubnetGroupName:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: !Join [ "- ", [ "MySql Subnet Group for", !Ref DBInstanceIdentifier ] ]
+      SubnetIds: !Ref SubnetIds
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties: 
+      AllocatedStorage: !Ref DBAllocatedStorage
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref DBInstanceClass
+      DBInstanceIdentifier: !Ref DBInstanceIdentifier
+      DBName: !Ref DBName
+      DBParameterGroupName: !Ref DBParameterGroupName
+      DBSubnetGroupName: !Ref DBSubnetGroupName
+      DeleteAutomatedBackups: false
+      DeletionProtection: false
+      EnableCloudwatchLogsExports: 
+            - audit
+            - error
+            - general
+            - slowquery
+      EnableIAMDatabaseAuthentication: true
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      KmsKeyId: !Ref KmsKeyId
+      LicenseModel: general-public-license
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      Port: !Ref Port
+      PreferredBackupWindow: !Ref  PreferredBackupWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      StorageType: !Ref StorageType
+      UseDefaultProcessorFeatures: true
+      VPCSecurityGroups: !Ref VPCSecurityGroups
+
+Outputs:
+  Endpoint:
+    Description: 'DB Instance Endpoint'
+    Value: !GetAtt 'DBInstance.Endpoint.Address'
+  Port:
+    Description: 'DB Port'
+    Value: !GetAtt 'DBInstance.Endpoint.Port'
+  DBName:
+    Description: 'Database Name'
+    Value: !Ref DBName

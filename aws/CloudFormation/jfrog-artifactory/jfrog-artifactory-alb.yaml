@@ -1,0 +1,277 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates a ALB for Artifactory with Rules
+Parameters:
+  LbName:
+    Type: String
+    Description: >
+      Specifies if the load balancer name
+  VpcId:
+    Type: String
+    Description: >
+      Specifies the ID of an existing VPC in which to launch
+      your container instances. If you specify a VPC ID, you must specify a list of
+      existing subnets in that VPC. If you do not specify a VPC ID, a new VPC is created
+      with atleast 1 subnet.
+    AllowedPattern: "^(?:vpc-([0-9a-f]{8}|[0-9a-f]{17})|)$"
+    ConstraintDescription: >
+      VPC Id must begin with 'vpc-'
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      Specifies the Comma separated list of existing VPC Subnet
+      Ids where ECS instances will run.
+    ConstraintDescription: >
+      Must be list of EC2 subnet ids
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: >
+      Specifies the Comma separated list of existing VPC Security Group
+      Ids to apply to the ALB.
+    ConstraintDescription: >
+      Must be list of EC2 security group ids
+  TargetGroupName:
+    Type: String
+    Description: >
+      The name of the target group.
+  Scheme:
+    Type: String
+    Description: >
+      Specifies if the load balancer will be internal or internet facing
+    Default: internal
+    AllowedValues:
+      - internal
+      - internet-facing
+  Port:
+    Type: Number
+    Description: >
+      Optional - Specify Port number assigned to the default target group.
+    Default: 80
+  ListenerPort:
+    Type: Number
+    Description: >
+      Required - Specify Port number assigned to the Listener.
+    Default: 443
+  HealthCheckPath:
+    Type: String
+    Description: >
+      Optional - Specify URL path for the healthcheck.
+    Default: '/'
+    ConstraintDescription: >
+      String must begin with '/'.
+  HealthCheckIntervalSeconds:
+    Type: Number
+    Description: >
+      Optional - Specify Interval time for the healthcheck.
+    Default: 5
+  HealthyThresholdCount:
+    Type: Number
+    Description: >
+      Optional - Specify how many successful checks before the service is deemed healthy.
+    Default: 3
+  UnhealthyThresholdCount:
+    Type: Number
+    Description: >
+      Optional - Specify how many unsuccessful checks before the service is deemed unhealthy.
+    Default: 5
+  HTTPCodeMatcher:
+    Type: String
+    Description: >
+      Optional - The HTTP codes to use when checking for a successful response from a target. You can specify values or ranges of values between 200 and 499.
+    Default: 200-400
+  HTTP2Enabled:
+    Type: String
+    Description: >
+      Indicates whether HTTP/2 is enabled. The value is true or false. The default is true. Elastic Load Balancing requires that message header names contain only alphanumeric characters and hyphens.
+    Default: true
+    AllowedValues:
+      - true
+      - false
+  CertificateARN1:
+    Type: String
+    Description: >
+      Origin SSL Certificate ARN to be used for SSL termination.
+  TargetType:
+    Type: String
+    Description: >
+      Optional - Specify whether the targets will be instances or ip addresses.
+    Default: 'instance'
+    AllowedValues:
+      - 'instance'
+      - 'ip'
+  StickinessEnabled:
+    Type: String
+    Description: >
+      Specifies if the target goup supports sticky sessions.
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+  StickinessLbCookieDurationSeconds:
+    Type: String
+    Description: >
+      Specifies if the target goup supports sticky sessions.
+    Default: 86400
+  IdleTimeout:
+    Type: Number
+    Description: >
+      Specifies how long, in seconds, the ALB will wait for a backend answer the first byte before it closes the connection and answer the client with an 504.
+    Default: 3600
+  AccessLogS3BucketName:
+    Type: String
+    Description: >
+      Specifies the S3 bucket name to store ALB Logs
+    Default: ''
+  AccessLogS3Prefix:
+    Type: String
+    Description: >
+      prefix to store the logs
+    Default: ''
+  ALBAccessLog:
+    Type: String
+    Default: 'false'
+Conditions:
+  EnableAccessLog: !And
+    - !Equals [ !Ref ALBAccessLog, 'true' ]
+    - !Not [!Equals [!Ref AccessLogS3BucketName , '']]
+Resources:
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Ref LbName
+      Scheme: !Ref Scheme
+      Subnets: !Ref SubnetIds
+      LoadBalancerAttributes:
+        - Key: routing.http2.enabled
+          Value: !Ref HTTP2Enabled
+        - Key: idle_timeout.timeout_seconds
+          Value: !Ref IdleTimeout
+        - Key: 'access_logs.s3.enabled'
+          Value: !If [EnableAccessLog, 'true', 'false']
+        - !If [EnableAccessLog, {Key: 'access_logs.s3.prefix', Value: !Ref AccessLogS3Prefix}, !Ref 'AWS::NoValue']
+        - !If [EnableAccessLog, {Key: 'access_logs.s3.bucket', Value: !Ref AccessLogS3BucketName}, !Ref 'AWS::NoValue']
+        - !If [EnableAccessLog, {Key: 'deletion_protection.enabled', Value: 'true'}, !Ref 'AWS::NoValue']
+      SecurityGroups: !Ref SecurityGroupIds
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: !Ref HealthCheckIntervalSeconds
+      HealthCheckProtocol: "HTTP"
+      HealthCheckTimeoutSeconds: 3
+      HealthyThresholdCount: !Ref HealthyThresholdCount
+      UnhealthyThresholdCount: !Ref UnhealthyThresholdCount
+      HealthCheckPath: !Ref HealthCheckPath
+      Matcher:
+        HttpCode: !Ref HTTPCodeMatcher
+      Name: !Ref TargetGroupName
+      Port: !Ref Port
+      Protocol: HTTP
+      TargetGroupAttributes:
+        -
+          Key: deregistration_delay.timeout_seconds
+          Value: '20'
+        -
+          Key: stickiness.enabled
+          Value: !Ref StickinessEnabled
+        -
+          Key: stickiness.lb_cookie.duration_seconds
+          Value: !Ref StickinessLbCookieDurationSeconds
+      VpcId: !Ref VpcId
+      TargetType: !Ref TargetType
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: !Ref ListenerPort
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+      Certificates:
+        - CertificateArn: !Ref CertificateARN
+  HTTPlistener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:
+        - Type: "redirect"
+          RedirectConfig:
+            Protocol: "HTTPS"
+            Port: 443
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: "HTTP"
+  ListenerRule1:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Actions:
+        - Type: redirect
+          RedirectConfig:
+            Host: '#{host}'
+            Path: '/ui/'
+            Port: '443'
+            Protocol: 'HTTPS'
+            StatusCode: HTTP_301
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/"
+      ListenerArn: !Ref Listener
+      Priority: 1
+  ListenerRule2:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Actions:
+        - Type: redirect
+          RedirectConfig:
+            Host: '#{host}'
+            Path: '/ui/'
+            Port: '443'
+            Protocol: 'HTTPS'
+            StatusCode: HTTP_301
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/ui"
+      ListenerArn: !Ref Listener
+      Priority: 2
+Outputs:
+  LoadBalancerArn:
+    Description: The ARN of the load balancer
+    Value: !Ref LoadBalancer
+  HostedZoneID:
+    Description: The ID of the Amazon Route 53 hosted zone associated with the load balancer
+    Value: !GetAtt LoadBalancer.CanonicalHostedZoneID
+  DNS:
+    Description: The DNS name for the load balancer
+    Value: !GetAtt LoadBalancer.DNSName
+  LoadBalancerFullName:
+    Description: The full name of the load balancer
+    Value: !GetAtt LoadBalancer.LoadBalancerFullName
+  Name:
+    Description: The name of the load balancer
+    Value: !GetAtt LoadBalancer.LoadBalancerName
+  TargetGroup:
+    Description: The ARN of the Target Group
+    Value: !Ref TargetGroup
+  TargetGroupFullName:
+    Description: The full name of the target group
+    Value: !GetAtt TargetGroup.TargetGroupFullName
+  TargetGroupName:
+    Description: The name of the target group
+    Value: !GetAtt TargetGroup.TargetGroupName
+  Listener:
+    Description: The ARN of the Listener
+    Value: !Ref Listener
+  ALBAccessLogS3BucketName:
+    Condition: EnableAccessLog
+    Description: Access Log S3 bucket Name
+    Value: !Ref AccessLogS3BucketName

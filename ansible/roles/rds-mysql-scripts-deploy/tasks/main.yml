@@ -1,0 +1,70 @@
+---
+- name: try
+  block:
+    - name: Install git and mysql
+      ansible.builtin.dnf:
+        name:
+        - mysql
+        state: latest
+      when: ansible_os_family == "RedHat"
+      become: yes
+
+    - name: Create tmp workspace
+      tempfile:
+        path: /tmp
+        state: directory
+        suffix: scripts
+      register: dir
+
+    - name: "clone  {{ git_url }}/{{ git_project }}/{{ git_repo }}.git"
+      ansible.builtin.git:
+        repo: "{{ git_url }}/{{ git_project }}/{{ git_repo }}.git"
+        dest: "{{ dir.path }}"
+        version: "{{ branch | default ('master') }}"
+      register: responce
+
+    - name: "verify masterfile.txt in repo : {{ git_repo }}"
+      ansible.builtin.stat:
+        path: "{{ dir.path }}/masterfile.txt"
+      register: masterfile
+
+    - name: "fail if master file not exists"
+      ansible.builtin.fail:
+        msg: "masterfile.txt is not present in repo {{ git_repo }}"
+      when: not masterfile.stat.exists
+
+    - name: copy deploy_ssl to "{{ dir.path }}"
+      ansible.builtin.copy:
+        src: deploy_ssl.sh
+        dest: "{{ dir.path }}"
+        mode: '0777'
+
+    - name: call sts role
+      community.aws.sts_assume_role:
+        role_arn: "{{ rds_env[region][env]['role_arn'] }}"
+        role_session_name: "rdsScriptsRoleSession"
+      register: assumed_role
+
+    - name: run mysql deploy script
+      ansible.builtin.shell: "./deploy_ssl.sh {{ rds_env[region][env]['rds'] }} {{ region }} {{ build_engineer }}"
+      args:
+        chdir: "{{ dir.path }}"
+      register: deploy_ssl_out
+      environment:
+        AWS_DEFAULT_REGION: "{{ region }}"
+        AWS_SESSION_TOKEN: "{{ assumed_role.sts_creds.session_token }}"
+        AWS_SECRET_ACCESS_KEY: "{{ assumed_role.sts_creds.secret_key }}"
+        AWS_ACCESS_KEY_ID: "{{ assumed_role.sts_creds.access_key }}"
+        
+    - name: deploy.sh history
+      ansible.builtin.debug:
+        msg: "{{ deploy_ssl_out.stdout_lines }}"
+
+  always:
+    - name: cleanup tmp workspace
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ dir.path }}"
+      ignore_errors: true

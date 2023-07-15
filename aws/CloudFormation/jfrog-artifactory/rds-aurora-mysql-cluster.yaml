@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  [Service Catalog] Creates an RDS Aurora MYSQL Database Cluster and Instances
+
+Parameters:
+  DBClusterIdentifier:
+    Description: Cluster Identifier
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '^[a-zA-Z0-9\.\-]+$'
+    ConstraintDescription: 'Provide a valid DBClusterIdentifier containing only letters , numbers and hyphens.'
+
+  DBName:
+    Description: Database Name
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9\\_]*"
+    ConstraintDescription: 'Must start with a letter. Only numbers, letters, and _ accepted. max length 64 characters'
+
+  DBPort:
+    Description: TCP/IP Port for the Database Instance
+    Type: Number
+    Default: 3306
+    ConstraintDescription: 'Must be in the range [1115-65535]'
+    MinValue: 1115
+    MaxValue: 65535
+
+  DBEngineVersion:
+    Description: Select Database Engine Version
+    Type: String
+    Default: 'aurora-mysql'
+
+  InstanceType:
+    Default: db.r5.large
+    Description: Database Instance Class
+    Type: String
+
+  AutoMinorVersionUpgrade:
+    Type: String
+    Description: >
+      Allowing to update automatically the Minor engine version.
+    AllowedValues:
+      - true
+      - false
+    Default: true
+
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Specifies the Comma separated list of existing VPC Subnet Ids where Aurora instances will run
+    ConstraintDescription: 'Must be list of EC2 subnet ids'
+
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Specifies the Comma separated list of existing VPC Security Groups
+    ConstraintDescription: 'Must be list of EC2 security group ids'
+
+  Username:
+    Description: Admin Username
+    NoEcho: true
+    Type: String
+    MinLength: 4
+    MaxLength: 15
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    ConstraintDescription: 'Must begin with a letter and contain only alphanumeric characters or numbers.'
+
+  Password:
+    Description: Admin Password
+    NoEcho: true
+    Type: String
+    MinLength: 8
+    MaxLength: 41
+    ConstraintDescription: 'Application Password must be 8-41 characters.'
+
+  DBEngineMode:
+    Description: The DB engine mode of the DB cluster, either provisioned, serverless (currently available for Aurora MySQL 5.6)
+    Type: String
+    Default: 'provisioned'
+    AllowedValues:
+      - 'provisioned'
+      - 'serverless'
+
+  PreferredBackupWindow:
+    Type: String
+    Description: Window time for instance backup.
+    Default: 00:30-01:30
+
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: Window time for instance maintenance.
+    Default: Sun:02:00-Sun:03:00
+
+  ClusterParameterGroup:
+    Description: RDS Aurora MYSQL Cluster Parameter Group Name
+    Type: String
+    Default: 'default.aurora-mysql5.7'
+
+  DBParameterGroup:
+    Description: RDS Aurora MYSQL DB Parameter Group Name
+    Type: String
+    Default: 'default.aurora-mysql5.7'
+
+  BackupRetentionPeriod:
+    Type: Number
+    Description: Specify the number of days during which automatic DB snapshots are retained.
+    MinValue: 1
+    MaxValue: 35
+    Default: 14
+  
+  KmsKeyId:
+    Type: String
+    Description: If you enable the StorageEncrypted property but don't specify this property, the default KMS key is used.
+
+Mappings:
+  DBFamilyMap:
+    'aurora-mysql':
+      Engine: 'aurora-mysql'
+      EngineVersion: '5.7.12'
+      ClusterParameterGroupFamily: 'aurora-mysql5.7'
+      ParameterGroupFamily: 'aurora-mysql5.7'
+
+Resources:
+  DBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: !Join [ "- ", [ "Aurora MYSQL Subnet Group for", !Ref DBClusterIdentifier ] ]
+      SubnetIds: !Ref SubnetIds
+
+#  AuroraKMSCMK:
+#    Type: 'AWS::KMS::Key'
+#    DeletionPolicy: Retain
+#    Properties:
+#      KeyPolicy:
+#        Version: '2012-10-17'
+#        Statement:
+#          - Effect: Allow
+#            Principal:
+#              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+#            Action: 'kms:*'
+#            Resource: '*'
+#          - Effect: Allow
+#            Principal:
+#              AWS: '*'
+#            Action:
+#              - 'kms:Encrypt'
+#              - 'kms:Decrypt'
+#              - 'kms:ReEncrypt*'
+#              - 'kms:GenerateDataKey*'
+#              - 'kms:CreateGrant'
+#              - 'kms:ListGrants'
+#              - 'kms:DescribeKey'
+#            Resource: '*'
+#            Condition:
+#              StringEquals:
+#                'kms:CallerAccount': !Ref 'AWS::AccountId'
+#                'kms:ViaService': !Sub 'rds.${AWS::Region}.amazonaws.com'
+#
+#  AuroraKMSCMKAlias:
+#    Type: 'AWS::KMS::Alias'
+#    Properties:
+#      AliasName: !Sub 'alias/${AWS::StackName}'
+#      TargetKeyId: !Ref AuroraKMSCMK
+
+  AuroraDBCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Retain
+    Properties:
+      DBClusterIdentifier: !Ref DBClusterIdentifier
+      DeletionProtection: true
+      EnableCloudwatchLogsExports:
+        - error
+        - slowquery
+      Engine: !FindInMap [DBFamilyMap, !Ref DBEngineVersion, Engine]
+      EngineMode: !Ref DBEngineMode
+      EngineVersion: !FindInMap [DBFamilyMap, !Ref DBEngineVersion, EngineVersion]
+      DatabaseName: !Ref DBName
+      Port: !Ref DBPort
+      PreferredBackupWindow: !Ref  PreferredBackupWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      MasterUsername: !Ref Username
+      MasterUserPassword: !Ref Password
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds: !Ref SecurityGroupIds
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      DBClusterParameterGroupName: !Ref ClusterParameterGroup
+      StorageEncrypted:  true
+      EnableIAMDatabaseAuthentication: true
+      KmsKeyId: !Ref KmsKeyId
+
+  AuroraInstance01:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    Properties:
+      DBClusterIdentifier: !Ref AuroraDBCluster
+      DBInstanceIdentifier: !Join [ "-", [ !Ref DBClusterIdentifier,"i01" ] ]
+      DBInstanceClass:
+        Ref: InstanceType
+      Engine: !FindInMap [ DBFamilyMap, !Ref DBEngineVersion, Engine ]
+      DBParameterGroupName: !Ref DBParameterGroup
+      AutoMinorVersionUpgrade: true
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+Outputs:
+  MYSQLClusterName:
+    Description: 'The name of the MYSQL Cluster.'
+    Value: !Ref AuroraDBCluster
+  ClusterEndpoint:
+    Description: 'Aurora Cluster/Writer Endpoint'
+    Value: !GetAtt 'AuroraDBCluster.Endpoint.Address'
+  ReaderEndpoint:
+    Description: 'Aurora Reader Endpoint'
+    Value: !GetAtt 'AuroraDBCluster.ReadEndpoint.Address'
+  MYSQLInstanceName:
+    Description: The Aurora MYSQL database instance identifier
+    Value: !Ref AuroraInstance01
+  MYSQLInstanceEndpoint:
+    Description: The connection endpoint for the MYSQL database instance.
+    Value: !GetAtt  'AuroraInstance01.Endpoint.Address'
+  Port:
+    Description: 'Aurora Endpoint Port'
+    Value: !GetAtt 'AuroraDBCluster.Endpoint.Port'
+  DBName:
+    Description: 'Database Name'
+    Value: !Ref DBName

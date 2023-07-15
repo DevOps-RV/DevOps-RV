@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  [Service Catalog] Creates an RDS PostgreSQL Database Instances
+
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - 
+      Label:
+        default: 'RDS Required Parameters'
+      Parameters:
+        - DBInstanceIdentifier
+        - DBName
+        - DBInstanceClass
+        - SubnetIds
+        - VPCSecurityGroups
+        - MasterUsername
+        - MasterUserPassword
+        - KmsKeyId
+
+Parameters:
+
+  DBAllocatedStorage:
+    Description: 'The allocated storage size, specified in GB'
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+
+  BackupRetentionPeriod:
+    Type: Number
+    Description: Specify the number of days during which automatic DB snapshots are retained.
+    MinValue: 1
+    MaxValue: 35
+    Default: 14
+
+  DBInstanceIdentifier:
+    Description: 'A name for the DB instance.'
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9\\-]*"
+    ConstraintDescription: 'Must begin with a letter. Subsequent characters can be letters, hyphens, or digits (0-9). Cant end with a hyphen or contain two consecutive hyphens'
+
+  DBInstanceClass:
+    Description: 'The instance type of database server.'
+    Type: String
+    Default: 'db.r5.large'
+
+  DBName:
+    Description: Database Name
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9\\_]*"
+    ConstraintDescription: 'Must begin with a letter or an underscore. Subsequent characters can be letters, underscores, or digits (0-9).'
+
+  EngineVersion:
+    Description: 'PostgreSQL version.'
+    Type: String
+    Default: '12.8'
+    AllowedValues: ['11.15', '12.7', '12.8', '12.9', '12.10', '13.3', '13.4', '13.5', '13.6', '14.1', '14.2']
+
+  KmsKeyId:
+    Description: 'The ARN of the AWS KMS key thats used to encrypt the DB instance'
+    Type: String
+
+  DBParameterGroupName:
+    Description: 'custom parameter group for an RDS database family.'
+    Type: String
+    Default: 'default.postgres12'
+    AllowedValues: ['default.postgres10', 'default.postgres11', 'default.postgres12', 'default.postgres13']
+
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Specifies the Comma separated list of existing VPC Subnet Ids where PostgreSQL instances will run
+    ConstraintDescription: 'Must be list of EC2 subnet ids'
+
+  MasterUsername:
+    Description: Admin Username
+    NoEcho: true
+    Type: String
+    MinLength: 4
+    MaxLength: 15
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    ConstraintDescription: 'Must begin with a letter and contain only alphanumeric characters or numbers.'
+
+  MasterUserPassword:
+    Description: Admin Password
+    NoEcho: true
+    Type: String
+    MinLength: 8
+    MaxLength: 41
+    ConstraintDescription: 'Application Password must be 8-41 characters.'
+
+  Port:
+    Description: The port number on which the database accepts connections.
+    Type: Number
+    Default: 5432
+
+  PreferredBackupWindow:
+    Type: String
+    Description: Window time for instance backup.
+    Default: 00:30-01:30
+
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: Window time for instance maintenance.
+    Default: Sun:02:00-Sun:03:00
+
+  StorageType:
+    Description: Specifies the storage type to be associated with the DB instance.
+    Type: String
+    AllowedValues: ['standard', 'gp2', 'io1']
+    Default: gp2
+
+  VPCSecurityGroups:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Specifies the Comma separated list of existing VPC Security Groups
+    ConstraintDescription: 'Must be list of EC2 security group ids'
+
+Resources:
+  DBSubnetGroupName:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: !Join [ "- ", [ "PostgreSQL Subnet Group for", !Ref DBInstanceIdentifier ] ]
+      SubnetIds: !Ref SubnetIds
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties: 
+      AllocatedStorage: !Ref DBAllocatedStorage
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref DBInstanceClass
+      DBInstanceIdentifier: !Ref DBInstanceIdentifier
+      DBName: !Ref DBName
+      DBParameterGroupName: !Ref DBParameterGroupName
+      DBSubnetGroupName: !Ref DBSubnetGroupName
+      DeleteAutomatedBackups: false
+      DeletionProtection: false
+      EnableCloudwatchLogsExports: 
+            - postgresql
+            - upgrade
+      EnableIAMDatabaseAuthentication: true
+      Engine: postgres
+      EngineVersion: !Ref EngineVersion
+      KmsKeyId: !Ref KmsKeyId
+      LicenseModel: postgresql-license
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      Port: !Ref Port
+      PreferredBackupWindow: !Ref  PreferredBackupWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      StorageType: !Ref StorageType
+      UseDefaultProcessorFeatures: true
+      VPCSecurityGroups: !Ref VPCSecurityGroups
+
+Outputs:
+  Endpoint:
+    Description: 'DB Instance Endpoint'
+    Value: !GetAtt 'DBInstance.Endpoint.Address'
+  Port:
+    Description: 'DB Port'
+    Value: !GetAtt 'DBInstance.Endpoint.Port'
+  DBName:
+    Description: 'Database Name'
+    Value: !Ref DBName

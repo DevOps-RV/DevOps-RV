@@ -1,0 +1,6 @@
+rds_env:
+  us-east-2:
+    aws-dev:
+      rds: 'mysql-cluster1.us-east-2.rds.amazonaws.com'
+    aws-prd:
+      rds: 'mysql-cluster1.us-east-2.rds.amazonaws.com'
