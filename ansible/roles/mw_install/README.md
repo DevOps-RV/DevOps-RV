@@ -14,8 +14,6 @@ AIA - AntFIX, Domain Update, O2C deploy, Pack and Unpack
 Update Load Balancer URL
 Node Manager Password Update (Prereq for init.d)
 Integrate init.d
-
-
 ```
 
 ### Prerequisites
@@ -31,9 +29,9 @@ example: SBL_DB_PSWD: password123#
    T3JhY2xlMTJcIw==
    SBL_DB_PSWD={{ SBL_DB_PSWD | b64decode }}
 ```
+
 ### Installing
 ```
-
 Role Variables Used
 
     SUITE: Select the Middleware Suite
@@ -51,9 +49,10 @@ Role Variables Used
     MS_PORT: Enter Middleware Managed Server Port Number	
     LIMIT_HOST (optional):  Enter The HOST Name or Group as in Inventory to Limit operations to that node/group	
     DEBUG (optional): Ansible Verbose -v,-vv or -vvv
+```
 
-Tags Used - Installation Type
-
+## Tags Used - Installation Type
+```
     prechecks: to Verify server requirements
     prereqs: will install rpms, setup folders and permissions, oracle client, jdk and download binaries
     check_vars: To Verify all Variables declared for RCU, Domain installation, and Pack
@@ -74,25 +73,18 @@ Tags Used - Installation Type
     nm_pass_update: Node Manager Password Update ( PreReq for init.d)
     init: init.d service scripts integration for start/stop/restart
     patch: Install Required Patches
+```
 
-
-Example Playbook
+## How to run playbook
 ----------------
-
 OSB Installation
 ```
 ansible-playbook playbooks/mw_install.yml -t binary_install,rcu,domain,pack,ms_unpack -e SUITE=OSB
 ```
 
-License
--------
+### Author
+_Raghu Vamsi_
 
-BSD
-
-Author Information
-------------------
-Raghu Vamsi
-```
-
+#### 🔗 Links
 [![Linkedin](https://img.shields.io/badge/-LinkedIn-blue?style=flat&logo=Linkedin&logoColor=white&link=https://www.linkedin.com/in/devops-rv/)](https://www.linkedin.com/in/devops-rv/)
 [![Medium](https://img.shields.io/badge/-Medium-000000?style=flat&labelColor=000000&logo=Medium&link=https://medium.com/@DevOps-Rv)](https://medium.com/@DevOps-Rv)
