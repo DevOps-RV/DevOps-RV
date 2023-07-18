@@ -75,14 +75,6 @@ Tags Used - Installation Type
     init: init.d service scripts integration for start/stop/restart
     patch: Install Required Patches
 
-```
-CLEAN UP - OSM:
-drop user "OSMORDER" CASCADE;
-drop user "OSMORDER_REPORTS" CASCADE;
-drop user "OSMORDER_RULE" CASCADE;
-drop user OSM_WLS CASCADE;
-drop user OSM_WLS_RUNTIME CASCADE;
-# drop TABLESPACE OSB; #optional
 
 Example Playbook
 ----------------
@@ -100,3 +92,6 @@ BSD
 Author Information
 ------------------
 Raghu Vamsi
+
+[![Linkedin](https://img.shields.io/badge/-LinkedIn-blue?style=flat&logo=Linkedin&logoColor=white&link=https://www.linkedin.com/in/devops-rv/)](https://www.linkedin.com/in/devops-rv/)
+[![Medium](https://img.shields.io/badge/-Medium-000000?style=flat&labelColor=000000&logo=Medium&link=https://medium.com/@DevOps-Rv)](https://medium.com/@DevOps-Rv)
