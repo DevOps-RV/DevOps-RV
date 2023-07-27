@@ -1,7 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  [Service Catalog] Creates an RDS MySQL, Aurora-MySQL, Aurora Database Instances
-
+Description: Creates an RDS Aurora-MySQL DB Subnet Group and Instance 
 Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:

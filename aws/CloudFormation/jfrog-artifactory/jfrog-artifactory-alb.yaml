@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  Creates a ALB for Artifactory with Rules
+Description: Creates a ALB for Artifactory with Rules
 Parameters:
   LbName:
     Type: String

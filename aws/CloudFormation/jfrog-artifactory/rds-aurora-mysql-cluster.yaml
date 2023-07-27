@@ -1,7 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  [Service Catalog] Creates an RDS Aurora MYSQL Database Cluster and Instances
-
+Description: Creates an RDS Aurora MYSQL Database Cluster and Instances
 Parameters:
   DBClusterIdentifier:
     Description: Cluster Identifier

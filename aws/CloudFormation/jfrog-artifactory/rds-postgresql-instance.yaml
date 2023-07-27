@@ -1,7 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  [Service Catalog] Creates an RDS PostgreSQL Database Instances
-
+Description: Creates an RDS PostgreSQL Database Instance and Subnet Group
 Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:
