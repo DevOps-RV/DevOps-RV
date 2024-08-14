@@ -31,6 +31,11 @@ RUN PYTHON_BASE_VERSION=$(echo ${PYTHON_VERSION} | sed -E 's/(^[0-9]+\.[0-9]+\.[
     tar xzf Python-${PYTHON_VERSION}.tgz && \
     cd Python-${PYTHON_VERSION} && \
     ./configure --enable-optimizations && \
+    make altinstall
+
+# Setup Python
+RUN PYTHON_BASE_VERSION=$(echo ${PYTHON_VERSION} | sed -E 's/(^[0-9]+\.[0-9]+\.[0-9]+).*/\1/') && \
+    PYTHON_SHORT_VERSION=$(echo ${PYTHON_BASE_VERSION} | sed 's/\.[0-9]*$//') && \
     rm -rf /usr/src/Python-${PYTHON_VERSION}.tgz /usr/src/Python-${PYTHON_VERSION} && \
     [ -L /usr/bin/python3 ] && rm /usr/bin/python3 || true && \
     [ -L /usr/bin/pip3 ] && rm /usr/bin/pip3 || true && \
