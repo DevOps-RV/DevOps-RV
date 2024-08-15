@@ -7,4 +7,4 @@
         msg: >
           "This will only work with ansible version 2.7 and above. Sorry ... "
   roles:
-    - mw_install
+    - oracle-weblogic

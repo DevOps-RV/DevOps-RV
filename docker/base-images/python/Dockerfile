@@ -63,7 +63,7 @@ COPY pip.conf /etc/pip.conf
 
 # Install Rust and Cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-    echo 'source "/home/root/.cargo/env' >> /etc/profile.d/cargo.sh
+    echo 'source "/root/.cargo/env' >> /etc/profile.d/cargo.sh
 
 # Set the working directory
 WORKDIR /opt/app
