@@ -2,71 +2,95 @@
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS base
 
 # Define the default Python version as a variable
-ARG PYTHON_VERSION=3.12.4
-
-# Install required packages and clean up
-RUN dnf -y update && \
-    dnf -y install \
-    gcc \
-    ca-certificates \
-    openssl \
-    openssl-devel \
-    bzip2-devel \
-    libffi-devel \
-    zlib-devel \
-    make \
-    tar \
-    gzip \
-    jq \
-    shadow-utils && \
-    dnf clean all
-
-# Install Python
-RUN PYTHON_BASE_VERSION=$(echo ${PYTHON_VERSION} | sed -E 's/(^[0-9]+\.[0-9]+\.[0-9]+).*/\1/') && \
-    PYTHON_SHORT_VERSION=$(echo ${PYTHON_BASE_VERSION} | sed 's/\.[0-9]*$//') && \
-    echo "PYTHON_BASE_VERSION=${PYTHON_BASE_VERSION}" && \
-    echo "PYTHON_SHORT_VERSION=${PYTHON_SHORT_VERSION}" && \
-    cd /usr/src && \
-    curl -Lo Python-${PYTHON_VERSION}.tgz https://www.python.org/ftp/python/${PYTHON_BASE_VERSION}/Python-${PYTHON_VERSION}.tgz && \
-    tar xzf Python-${PYTHON_VERSION}.tgz && \
-    cd Python-${PYTHON_VERSION} && \
-    ./configure --enable-optimizations && \
-    make altinstall
-
-# Setup Python
-RUN PYTHON_BASE_VERSION=$(echo ${PYTHON_VERSION} | sed -E 's/(^[0-9]+\.[0-9]+\.[0-9]+).*/\1/') && \
-    PYTHON_SHORT_VERSION=$(echo ${PYTHON_BASE_VERSION} | sed 's/\.[0-9]*$//') && \
-    rm -rf /usr/src/Python-${PYTHON_VERSION}.tgz /usr/src/Python-${PYTHON_VERSION} && \
-    [ -L /usr/bin/python3 ] && rm /usr/bin/python3 || true && \
-    [ -L /usr/bin/pip3 ] && rm /usr/bin/pip3 || true && \
-    [ -L /usr/bin/python ] && rm /usr/bin/python || true && \
-    [ -L /usr/bin/pip ] && rm /usr/bin/pip || true && \
-    ln -s /usr/local/bin/python${PYTHON_SHORT_VERSION} /usr/bin/python3 && \
-    ln -s /usr/local/bin/pip${PYTHON_SHORT_VERSION} /usr/bin/pip3 && \
-    ln -s /usr/local/bin/python${PYTHON_SHORT_VERSION} /usr/bin/python && \
-    ln -s /usr/local/bin/pip${PYTHON_SHORT_VERSION} /usr/bin/pip && \
-    python --version && \
-    pip --version
-
-# Create a system user and set up the application directory
-RUN groupadd --system rvapp && \
-    useradd --system --gid rvapp --home /opt/app --shell /bin/bash --comment "rv application user" --uid 1010 rvapp && \
-    mkdir -p /opt/app && \
-    chown 1010:1010 -R /opt/app
+ARG PYTHON_VERSION=3.13.0rc1
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install required packages and clean up
+RUN set -eux; \
+        dnf -y update; \
+        dnf -y install \
+            gcc \
+            ca-certificates \
+            openssl \
+            openssl-devel \
+            bzip2-devel \
+            libffi-devel \
+            zlib-devel \
+            make \
+            tar \
+            gzip \
+            shadow-utils; \
+        dnf clean all
+
+# Install Python
+RUN set -eux; \
+        mkdir -p /usr/src/python; \
+        curl -fLo /usr/src/python.tgz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tgz"; \
+        \
+        tar --extract \
+            --directory /usr/src/python \
+            --strip-components=1 \
+            --file /usr/src/python.tgz; \
+        \
+        cd /usr/src/python; \
+            ./configure \
+                --enable-optimizations \
+                --with-ensurepip=install; \
+            make altinstall; \
+        \
+        rm -rf \
+            /usr/src/python.tgz \
+            /usr/src/python;
+
+# make some useful symlinks that are expected to exist
+RUN set -eux; \
+        ln -s /usr/local/bin/python${PYTHON_VERSION%.*} /usr/bin/python3; \
+        ln -s /usr/local/bin/pip${PYTHON_VERSION%.*} /usr/bin/pip3; \
+        ln -s /usr/local/bin/python${PYTHON_VERSION%.*} /usr/bin/python; \
+        ln -s /usr/local/bin/pip${PYTHON_VERSION%.*} /usr/bin/pip; \
+        \
+        python --version; \
+        pip --version
+
+# Install Rust and Cargo
+ENV CARGO_HOME=/usr/local/rust/cargo \
+    RUSTUP_HOME=/usr/local/rust/rustup \
+    PATH="${CARGO_HOME}/bin:${PATH}"
+
+RUN set -eux; \
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+            sh -s -- -y --default-toolchain stable --no-modify-path; \
+        # Configure environment for all users
+        echo 'export CARGO_HOME=/usr/local/rust/cargo' >> /etc/profile.d/cargo.sh; \
+        echo 'export RUSTUP_HOME=/usr/local/rust/rustup' >> /etc/profile.d/cargo.sh; \
+        echo 'export PATH=$CARGO_HOME/bin:$PATH' >> /etc/profile.d/cargo.sh; \
+        # Set default Rust toolchain
+        /usr/local/rust/cargo/bin/rustup default stable;
 
 # Copy pip configuration
 COPY pip.conf /etc/pip.conf
 
-# Install Rust and Cargo
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-    echo 'source "/root/.cargo/env' >> /etc/profile.d/cargo.sh
+# Create a system group and user with minimal permissions
+RUN set -eux; \
+        groupadd --system --gid 1010 rvapp; \
+        useradd --system \
+            --uid 1010 \
+            --gid rvapp \
+            --home /opt/app \
+            --shell /bin/bash \
+            --no-log-init \
+            --comment "rv application user" rvapp; \
+        mkdir -p /opt/app; \
+        chown rvapp:rvapp -R /opt/app; \
+        chmod 755 /opt/app
+
+# Switch to the non root application user
+USER rvapp
 
 # Set the working directory
 WORKDIR /opt/app
 
-# Set the default command
 CMD ["/bin/bash"]
