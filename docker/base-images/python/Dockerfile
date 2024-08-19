@@ -22,7 +22,9 @@ RUN set -eux; \
             make \
             tar \
             gzip \
-            shadow-utils; \
+            shadow-utils \
+            rust \
+            cargo; \
         dnf clean all
 
 # Install Python
@@ -54,21 +56,6 @@ RUN set -eux; \
         \
         python --version; \
         pip --version
-
-# Install Rust and Cargo
-ENV CARGO_HOME=/usr/local/rust/cargo \
-    RUSTUP_HOME=/usr/local/rust/rustup \
-    PATH="${CARGO_HOME}/bin:${PATH}"
-
-RUN set -eux; \
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-            sh -s -- -y --default-toolchain stable --no-modify-path; \
-        # Configure environment for all users
-        echo 'export CARGO_HOME=/usr/local/rust/cargo' >> /etc/profile.d/cargo.sh; \
-        echo 'export RUSTUP_HOME=/usr/local/rust/rustup' >> /etc/profile.d/cargo.sh; \
-        echo 'export PATH=$CARGO_HOME/bin:$PATH' >> /etc/profile.d/cargo.sh; \
-        # Set default Rust toolchain
-        /usr/local/rust/cargo/bin/rustup default stable;
 
 # Copy pip configuration
 COPY pip.conf /etc/pip.conf
