@@ -2,7 +2,7 @@
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS base
 
 # Define the default Python version as a variable
-ARG PYTHON_VERSION=3.13.0rc1
+ARG PYTHON_VERSION=3.12.4
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -73,9 +73,6 @@ RUN set -eux; \
         mkdir -p /opt/app; \
         chown rvapp:rvapp -R /opt/app; \
         chmod 755 /opt/app
-
-# Switch to the non root application user
-USER rvapp
 
 # Set the working directory
 WORKDIR /opt/app
