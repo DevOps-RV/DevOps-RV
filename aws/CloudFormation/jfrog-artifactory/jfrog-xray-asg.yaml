@@ -64,7 +64,7 @@ Parameters:
   ArtiURL:
     Description: Artifactory DNS name used by the Reverse Proxy
     Type: String
-    Default: 'https://artifactory.inf.aws.vz-connect.net'
+    Default: 'https://my-artifactory.aws.net'
   CustomUserData:
     Type: String
     Default: ''
