@@ -8,13 +8,13 @@ ENV JAVA_HOME=/usr/lib/jvm/java
 # Install required packages
 RUN set -eux; \
         dnf install -y \
-            curl \
             tar \
             gzip \
             ca-certificates \
             findutils \
             glibc \
-            zlib; \
+            zlib \
+            shadow-utils; \
         dnf clean all
 
 
