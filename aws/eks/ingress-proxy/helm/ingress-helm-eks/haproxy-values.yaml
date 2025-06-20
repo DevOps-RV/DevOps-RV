@@ -1,0 +1,10 @@
+controller:
+  kind: Deployment
+  service:
+    type: NodePort
+    ports:
+      http: 80
+      https: 443
+  config:
+    maxconn: "50000"
+    ssl-redirect: "false"

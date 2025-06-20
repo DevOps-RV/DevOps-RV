@@ -1,0 +1,7 @@
+kubectl create namespace haproxy-controller
+kubectl apply -f haproxy-controller.yaml
+kubectl apply -f alb-router.yaml
+kubectl apply -f ingress-service-a.yaml
+
+
+
