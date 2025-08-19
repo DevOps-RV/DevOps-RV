@@ -21,7 +21,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Build and Push Python Base Image
         run: |
+          cd docker/base-images/python
           docker buildx build --platform linux/amd64 \
             -t dockerhubdevopsrv/python-base:latest \
-            -f docker/base-images/python/Dockerfile \
             --push .
