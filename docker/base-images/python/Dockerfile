@@ -58,8 +58,7 @@ RUN set -eux; \
         pip --version
 
 # Copy pip configuration
-RUN pwd; ls -ltr 
-# COPY pip.conf /etc/pip.conf
+COPY pip.conf /etc/pip.conf
 
 # Create a system group and user with minimal permissions
 RUN set -eux; \

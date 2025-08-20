@@ -6,9 +6,17 @@ on:
   workflow_dispatch: # Allows manual triggering
 
 jobs:
-
-  build-python-base:
+  build-base-images:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - { name: "python", path: "docker/base-images/python", tag: "python-base" }
+          - { name: "angular", path: "docker/base-images/angular", tag: "angular-base" }
+          - { name: "java", path: "docker/base-images/java", tag: "java-base" }
+          - { name: "node", path: "docker/base-images/node", tag: "node-base" }
+          - { name: "go", path: "docker/base-images/go", tag: "go-base" }
+          - { name: "next", path: "docker/base-images/next", tag: "next-base" }
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -19,9 +27,9 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Build and Push Python Base Image
+      - name: Build and Push Base Image
         run: |
-          cd docker/base-images/python
+          cd ${{ matrix.image.path }}
           docker buildx build --platform linux/amd64 \
-            -t dockerhubdevopsrv/python-base:latest \
+            -t dockerhubdevopsrv/${{ matrix.image.tag }}:latest \
             --push .

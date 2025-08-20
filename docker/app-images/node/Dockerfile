@@ -1,13 +1,14 @@
-# Use the latest Amazon Linux 2023 as the base image
-FROM dockerhubdevopsrv/python-base:latest
+# Use the latest Node.js base image
+FROM dockerhubdevopsrv/node-base:latest
+
+# Set the working directory
+WORKDIR /opt/app
 
 # Copy the application code
 COPY . .
 
 # Install dependencies
-RUN set -eux; \
-        pip install --upgrade pip; \
-        pip install -r ./src/requirements.txt
+RUN npm install
 
 # Expose the application port
 EXPOSE 8080
@@ -19,4 +20,4 @@ RUN chown -R rvapp:rvapp /opt/app
 USER rvapp
 
 # Run the application
-CMD ["python", "./src/app.py"]
+CMD ["node", "app.js"]

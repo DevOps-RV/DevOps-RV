@@ -33,6 +33,33 @@ To run the Docker image, use the following command:
 docker run --rm --platform linux/amd64 -it rv-amz-2023-java:$CORRETTO_VERSION
 ```
 
+## Customization
+
+- **Amazon Corretto Version:** Modify the `ARG CORRETTO_VERSION` to install a different Amazon Corretto version. You can find available versions at [Amazon Corretto Downloads](https://docs.aws.amazon.com/corretto/latest/corretto-11-ug/downloads-list.html).
+- **Application Code:** Copy your Java application code into the `/opt/app` directory.
+
+## Example Usage
+
+```Dockerfile
+# Use the Java base image
+FROM dockerhubdevopsrv/java-base:latest
+
+COPY . .
+RUN javac Main.java
+
+# Expose the application port
+EXPOSE 8080
+
+# Change ownership to the non-root user
+RUN chown -R rvapp:rvapp /opt/app
+
+# Switch to the non-root user
+USER rvapp
+
+# Run the application
+CMD ["java", "Main"]
+```
+
 ---
 
 ### Author: Raghu Vamsi

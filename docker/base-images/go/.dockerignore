@@ -1,0 +1,7 @@
+bin
+pkg
+.git
+.gitignore
+Dockerfile
+.dockerignore
+.env
