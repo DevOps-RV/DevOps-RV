@@ -5,9 +5,9 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
 ARG GO_VERSION=1.21.0
 
 # Install required dependencies
-RUN yum update -y && \
-    yum install -y gcc gcc-c++ make wget-minimal tar && \
-    yum clean all
+RUN dnf update -y && \
+    dnf install -y gcc gcc-c++ make wget tar && \
+    dnf clean all
 
 # Download and install Go
 RUN wget https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
