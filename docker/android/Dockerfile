@@ -19,8 +19,7 @@ RUN set -eux; \
         unzip \
         tar \
         java-${JAVA_VERSION}-amazon-corretto-devel \
-        ruby ruby-devel \
-        npm \
+        ruby \
         gcc \
         make \
         which \
@@ -60,7 +59,7 @@ RUN set -eux; \
             "sources;android-35" \
             "emulator"
 
-# Setup Bundle Tool , Firebase CLI, Appcenter CLI, Fastlane & Bundler
+# Setup Bundle Tool , Firebase CLI, Fastlane & Bundler
 RUN wget -q https://github.com/google/bundletool/releases/download/${BUNDLE_TOOL_VERSION}/bundletool-all-${BUNDLE_TOOL_VERSION}.jar -O /opt/bundletool.jar && \
     chmod +x /opt/bundletool.jar && \
     echo '#!/bin/sh' > /usr/local/bin/bundletool && \
@@ -69,16 +68,12 @@ RUN wget -q https://github.com/google/bundletool/releases/download/${BUNDLE_TOOL
     \
     curl -sL https://firebase.tools | bash && \
     \
-    npm install --location=global appcenter-cli --unsafe-perm && \
-    npm cache clean --force && \
-    \
     gem install bundler fastlane -N && \
     \
     rm -rf \
         /tmp/* \
         /var/cache/* \
         /root/.cache \
-        /root/.npm \
         /root/.gem
 
 # Verify installations
@@ -91,8 +86,6 @@ RUN java --version && \
     bundler --version && \
     ruby --version && \
     git --version && \
-    npm --version && \
-    appcenter --version && \
     bundletool version
 
 CMD ["/bin/bash"]
